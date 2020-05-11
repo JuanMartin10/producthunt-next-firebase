@@ -22,12 +22,23 @@ const ContenedorProducto = styled.div`
    }
 `;
 
+const CreadorProducto = styled.p`
+   padding: .5rem 2rem;
+   background-color: #DA552F;
+   color: #FFF;
+   text-transform: uppercase;
+   font-weight: bold;
+   display: inline-block;
+   text-align: center;
+`
+
 const Producto = () => {
 
     // State del componente
     const [producto, guardarProducto] = useState({})
     const [error, guardarError] = useState(false)
     const [comentario, guardarComentario] = useState({})
+    const [consultarDB, guardarConsultarDB] = useState(true)
 
     // Routing para obtener el id actual
     const router = useRouter()
@@ -37,22 +48,24 @@ const Producto = () => {
     const { firebase, usuario } = useContext(FirebaseContext)
 
     useEffect(() => {
-        if (id) {
+        if (id && consultarDB) {
             const obtenerProducto = async () => {
                 const productoQuery = await firebase.db.collection('productos').doc(id)
                 const producto = await productoQuery.get()
                 if (producto.exists) {
                     guardarProducto(producto.data())
+                    guardarConsultarDB(false)
                 } else {
                     guardarError(true)
+                    guardarConsultarDB(false)
                 }
             }
             obtenerProducto()
         }
 
-    }, [id, producto])
+    }, [id])
 
-    if (Object.keys(producto).length === 0) return `Cargando`
+    if (Object.keys(producto).length === 0 && !error) return `Cargando`
 
     const { comentarios, creado, descripcion, empresa, nombre, url, urlimagen, votos, creador, haVotado } = producto
 
@@ -81,6 +94,7 @@ const Producto = () => {
             ...producto,
             votos: nuevoTotal
         })
+        guardarConsultarDB(true) // Hay un voto por lo que consulta a la BD
 
     }
 
@@ -91,6 +105,14 @@ const Producto = () => {
             [e.target.name]: e.target.value
         })
     }
+
+    // Identifica si el comentario es el creador del producto
+    const esCreador = id => {
+        if (creador.id === id) {
+            return true
+        }
+    }
+
     const agregarComentario = e => {
         e.preventDefault()
 
@@ -115,111 +137,143 @@ const Producto = () => {
             ...producto,
             comentarios: nuevosComentarios
         })
+        guardarConsultarDB(true) // Hay un comentario por lo que consulta a la BD
 
     }
 
+    // Funcion que revisa que el creador del producto sea el mismo que esta autenticado
+    const puedeBorrar = () => {
+        if (!usuario) return false
+
+        if (creador.id === usuario.uid) {
+            return true
+        }
+    }
+    // Elimina un producto de la BD
+    const eliminarProducto = async () => {
+        if (!usuario) {
+            return router.push('/login')
+        }
+        if (creador.id === usuario.uid) {
+            return router.push('/login')
+        }
+        try {
+            await firebase.db.collection('productos').doc(id).delete();
+            router.push('/')
+        } catch (error) {
+            console.log(error)
+        }
+    }
     return (
         <Layout>
             <>
-                {error && <Error404 />}
+                {error ? <Error404 /> : (
 
-                <div className="contenedor">
-                    <h1 css={css`
+
+                    <div className="contenedor">
+                        <h1 css={css`
                         text-align: center;
                         margin-top: 5rem;
                         `}>{nombre}</h1>
-                </div>
-                <ContenedorProducto>
-                    <div>
-                        <p>Publicado hace: {formatDistanceToNow(new Date(creado), { locale: es })}</p>
-                        <p> Por {creador.nombre} de {empresa}</p>
-                        <img src={urlimagen} />
-                        <p>{descripcion}</p>
+                        <ContenedorProducto>
+                            <div>
+                                <p>Publicado hace: {formatDistanceToNow(new Date(creado), { locale: es })}</p>
+                                <p> Por {creador.nombre} de {empresa}</p>
+                                <img src={urlimagen} />
+                                <p>{descripcion}</p>
 
-                        {usuario && (
-                            <>
-                                <h2>Agrega tu comentario</h2>
-                                <form
-                                    onSubmit={agregarComentario}
-                                >
-                                    <Div>
-                                        <input
-                                            type="text"
-                                            name="mensaje"
-                                            onChange={comentarioChange}
-                                        />
-                                    </Div>
-                                    <InputSubmit
-                                        type="submit"
-                                        value="agregar comentario"
-                                    />
-                                </form>
-                            </>
-                        )}
+                                {usuario && (
+                                    <>
+                                        <h2>Agrega tu comentario</h2>
+                                        <form
+                                            onSubmit={agregarComentario}
+                                        >
+                                            <Div>
+                                                <input
+                                                    type="text"
+                                                    name="mensaje"
+                                                    onChange={comentarioChange}
+                                                />
+                                            </Div>
+                                            <InputSubmit
+                                                type="submit"
+                                                value="agregar comentario"
+                                            />
+                                        </form>
+                                    </>
+                                )}
 
-                        <h2 css={css`
+                                <h2 css={css`
                             margin: 2rem 0;
                         `}>Comentarios</h2>
 
-                        {comentarios.length === 0 ? "Aun no hay comentarios" : (
-                            <ul>
-                                {comentarios.map((comentario, id) => (
-                                    <li
-                                        key={`${comentario.usuarioId}-${id}`}
-                                        css={css`
+                                {comentarios.length === 0 ? "Aun no hay comentarios" : (
+                                    <ul>
+                                        {comentarios.map((comentario, id) => (
+                                            <li
+                                                key={`${comentario.usuarioId}-${id}`}
+                                                css={css`
                                             border: 1px solid #e1e1e1;
                                             padding: 2rem;
                                         `
 
-                                        }
-                                    >
-                                        <p>{comentario.mensaje}</p>
-                                        <p>Escrito por
+                                                }
+                                            >
+                                                <p>{comentario.mensaje}</p>
+                                                <p>Escrito por
                                             <span
-                                                css={css`
+                                                        css={css`
                                                 font-weight: bold;
                                             `}
-                                            >
-                                                {''}  {comentario.usuarioNombre}
-                                            </span>
-                                        </p>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
+                                                    >
+                                                        {''}  {comentario.usuarioNombre}
+                                                    </span>
+                                                </p>
+                                                {esCreador(comentario.usuarioId) && <CreadorProducto>Es Creador</CreadorProducto>}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
 
-                    </div>
+                            </div>
 
-                    <aside>
-                        <Button
-                            target="_blank"
-                            bgColor="true"
-                            href={url}
-                        >
-                            Visitar URL</Button>
+                            <aside>
+                                <Button
+                                    target="_blank"
+                                    bgColor="true"
+                                    href={url}
+                                >
+                                    Visitar URL</Button>
 
 
-                        <div
-                            css={css`
+                                <div
+                                    css={css`
                                 margin-top: 5rem;
                             `}
-                        >
+                                >
 
 
-                            <p css={css`
+                                    <p css={css`
                             text-align: center;
                            `}>{votos} Votos</p>
-                        </div>
+                                </div>
 
-                        {usuario && (
+                                {usuario && (
+                                    <Button
+                                        onClick={votarProducto}
+                                    >
+                                        Votar
+                                    </Button>
+                                )}
+                            </aside>
+                        </ContenedorProducto>
+                        {puedeBorrar() &&
                             <Button
-                                onClick={votarProducto}
-                            >
-                                Votar
-                            </Button>
-                        )}
-                    </aside>
-                </ContenedorProducto>
+                                onClick={eliminarProducto}
+                            >Eliminar producto</Button>
+                        }
+                    </div>
+                )}
             </>
         </Layout>
     )
